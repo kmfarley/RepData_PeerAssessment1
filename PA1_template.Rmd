@@ -1,25 +1,124 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "RepResPA1"
+output: html_document
 ---
 
+##Loading and preprocessing the data
 
-## Loading and preprocessing the data
+```{r, message=FALSE}
+library(lubridate)
+library(dplyr)
+```
+
+```{r}
+#Load file data previously downloaded
+load_data <- function() {
+  activity <- read.csv('activity.csv')
+  activity$date <- ymd(activity$date)
+  return(tbl_df(activity))
+}
+
+activity <- load_data()
+head(activity)
+```
 
 
 
-## What is mean total number of steps taken per day?
+##What is mean total number of steps taken per day?
+
+```{r}
+#Grouping data by day
+by_day <- function(activity) {
+  gro_by_day <- group_by(activity, date)
+  summary_tbl <- summarise(gro_by_day,
+                           total = sum(steps, na.rm = TRUE),
+                           average = mean(steps, na.rm = TRUE),
+                           median = median(steps, na.rm = TRUE))
+  return(summary_tbl)
+}
+day_steps <- by_day(activity)
+hist(day_steps$total, main="Distribution of total daily steps",
+     xlab="Counts", ylab="Total Steps")
+cat('Median number of the total number of steps taken per day:', median(day_steps$total, na.rm=TRUE))
+cat('Mean number of the total number of steps taken per day:', mean(day_steps$total, na.rm=TRUE))
+
+```
 
 
 
-## What is the average daily activity pattern?
+##What is the average daily activity pattern?
+
+```{r}
+#Grouped by 5 minute interval
+step_interval <- function(activity) {
+  gro_by_int <- group_by(activity, interval)
+  summary_tbl <- summarise(gro_by_int,
+                           total = sum(steps, na.rm = TRUE),
+                           average = mean(steps, na.rm = TRUE))
+  return(summary_tbl)
+}
+int_sum <- step_interval(activity)
+plot(int_sum$interval, int_sum$total, type="l",
+     main="Average number of steps taken across all days",
+     xlab="Interval",
+     ylab="Steps")
+
+```
+
+##Imputing missing values
+
+There are a number of days/intervals where there are missing values (coded as NA). The presence of missing days may introduce bias into some calculations or summaries of the data.
+
+```{r}
+cat('NA:', sum(is.na(activity$steps)))
+
+imp_mis <- function(activity, int_sum) {
+  imp_act <- left_join(activity, int_sum, by='interval')
+  imp_act$imp_ste <- ifelse(is.na(imp_act$steps), 
+                                    imp_act$average, 
+                                    imp_act$steps)
+  return(select(imp_act, date, interval, steps, imp_ste)) 
+}
+
+imp_act <- imp_mis(activity, int_sum)
+imp_act_daily_totals <- imp_act %>% 
+                           group_by(date) %>% 
+                           summarise(daily_total = sum(imp_ste))
+hist(imp_act_daily_totals$daily_total,
+     main="Imputed Totals",
+     xlab="Imputed Steps",
+     ylab="Count")
+cat('Median total number of steps taken per day:',
+    median(imp_act_daily_totals$daily_total, na.rm=TRUE))
+cat('Mean total number of steps taken per days:',
+    mean(imp_act_daily_totals$daily_total, na.rm=TRUE))
+```
+
+Yes, the values differ from the first part of the assignment.The impact is that the values have shifted to the right.
 
 
 
-## Imputing missing values
+##Are there differences in activity patterns between weekdays and weekends?
 
+```{r}
+wee_sum <- function(activity) {
+  workweek <- c('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday')
+  activity$workday <- weekdays(activity$date) %in% workweek
+  gro_by_wee_day <- group_by(activity, interval, workday)
+  summary_tbl <- summarise(gro_by_wee_day, average_steps = mean(steps, na.rm=TRUE))
+  return(summary_tbl)
+}
 
+plot_it <- function(wee_dif) {
+  par(mfrow = c(2,1))
+  with(wee_dif[wee_dif$workday==FALSE,],
+       plot(interval, average_steps, type="l", main="Weekend",
+            xlab="Interval", ylab="Steps"))
+  with(wee_dif[wee_dif$workday==TRUE,],
+       plot(interval, average_steps, type="l", main="Weekday",
+            xlab="Interval", ylab="Steps"))
+}
 
-## Are there differences in activity patterns between weekdays and weekends?
+wee_dif <- wee_sum(activity)
+plot_it(wee_dif)
+```
